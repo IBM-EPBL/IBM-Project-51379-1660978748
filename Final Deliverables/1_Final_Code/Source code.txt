@@ -1,0 +1,132 @@
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <PubSubClient.h> 
+#include "DHT.h"
+
+const char* ssid = "SMART-G";
+const char* password = "10112019";  
+
+#define DHTPIN D6
+#define G D0
+#define DHTTYPE DHT11 
+DHT dht(DHTPIN, DHTTYPE);
+
+#define ID "0t9jrj" 
+#define DEVICE_TYPE "ESP8266" 
+#define DEVICE_ID "TEST" 
+#define TOKEN "TEST-12345" 
+
+char server[] = ID ".messaging.internetofthings.ibmcloud.com";
+char publish_Topic1[] = "iot-2/evt/Data1/fmt/json";
+char publish_Topic2[] = "iot-2/evt/Data2/fmt/json";
+char publish_Topic3[] = "iot-2/evt/Data2/fmt/json";
+char authMethod[] = "use-token-auth";
+char token[] = TOKEN;
+char clientId[] = "d:" ID ":" DEVICE_TYPE ":" DEVICE_ID;
+
+WiFiClient wifiClient;
+PubSubClient client(server, 1883, NULL, wifiClient);
+
+void setup() {
+  pinMode(D0,OUTPUT);
+  digitalWrite(D0,HIGH);
+    Serial.begin(115200);
+    dht.begin();
+    Serial.println();
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+    } 
+    Serial.println("");
+    Serial.println(WiFi.localIP());
+
+    if (!client.connected()) {
+        Serial.print("Reconnecting client to ");
+        Serial.println(server);
+        while (!client.connect(clientId, authMethod, token)) {
+            Serial.print(".");
+            delay(500);
+        }
+        Serial.println("Connected TO IBM IoT cloud!");
+    }
+}
+
+long previous_message = 0;
+void loop() {
+    client.loop();
+    long current = millis();
+    if (current - previous_message > 3000) {
+        previous_message = current;
+         float hum = dht.readHumidity();
+         float temp = dht.readTemperature();
+         float MOI =  map(analogRead(A0), 0, 1023, 100, 0);
+         if (isnan(hum) || isnan(temp)  ){
+    Serial.println(F("Failed to read from DHT sensor!"));
+    return;
+  }
+
+  Serial.print("Temperature: ");   
+  Serial.print(temp);
+  Serial.print("°C");
+  Serial.print(" Humidity: ");
+  Serial.print(hum);
+  Serial.print("%");
+  Serial.print("SOIL MOITURE: ");
+  Serial.print(MOI);
+  if(MOI<=10)
+  {
+      digitalWrite(D0,LOW);
+      delay(100);
+      digitalWrite(D0,HIGH); 
+    }
+    else
+    {
+      digitalWrite(D0,HIGH);
+    }
+
+    
+       String payload = "{\"d\":{\"Name\":\"" DEVICE_ID "\"";
+              payload += ",\"Temperature\":";
+              payload += temp;
+              payload += "}}";
+       
+        Serial.print("Sending payload: ");
+        Serial.println(payload);
+
+        if (client.publish(publish_Topic1, (char*) payload.c_str())) {
+            Serial.println("Published successfully");
+        } else {
+            Serial.println("Failed");
+        }
+        String payload1 = "{\"d\":{\"Name\":\"" DEVICE_ID "\"";
+              payload1 += ",\"Humidity\":";
+              payload1 += hum;
+              payload1 += "}}";
+              Serial.print("Sending payload: ");
+              Serial.println(payload1);
+              Serial.println('\n');
+       
+         if (client.publish(publish_Topic2, (char*) payload1.c_str())) {
+            Serial.println("Published successfully");
+        } else {
+            Serial.println("Failed");
+        }
+
+
+       String payload3 = "{\"d\":{\"Name\":\"" DEVICE_ID "\"";
+              payload3 += ",\"Moiture\":";
+              payload3 += MOI;
+              payload3 += "}}";
+       
+        Serial.print("Sending payload: ");
+        Serial.println(payload3);
+
+        if (client.publish(publish_Topic3, (char*) payload3.c_str())) {
+            Serial.println("Published successfully");
+        } else {
+            Serial.println("Failed");
+        }
+  
+    }
+}
